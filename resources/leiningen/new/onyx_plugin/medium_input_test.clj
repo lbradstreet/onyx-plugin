@@ -1,21 +1,20 @@
 (ns onyx.plugin.{{medium}}-input-test
   (:require [clojure.core.async :refer [chan >!! <!! close! sliding-buffer]]
             [clojure.test :refer [deftest is testing]]
-            [taoensso.timbre :refer [info]]
             [onyx.plugin.core-async :refer [take-segments!]]
             [onyx.plugin.{{medium}}-input]
             [onyx.api]))
 
 (def id (java.util.UUID/randomUUID))
 
-(def env-config 
-  {:onyx/id id
+(def env-config
+  {:onyx/tenancy-id id
    :zookeeper/address "127.0.0.1:2188"
    :zookeeper/server? true
    :zookeeper.server/port 2188})
 
-(def peer-config 
-  {:onyx/id id
+(def peer-config
+  {:onyx/tenancy-id id
    :zookeeper/address "127.0.0.1:2188"
    :onyx.peer/job-scheduler :onyx.job-scheduler/greedy
    :onyx.messaging.aeron/embedded-driver? true
@@ -53,7 +52,7 @@
 
 (def in-datasource (atom (list)))
 
-(def out-chan (chan (sliding-buffer (inc n-messages))))
+(def out-chan (chan (sliding-buffer n-messages)))
 
 (defn inject-in-datasource [event lifecycle]
   {:{{medium}}/example-datasource in-datasource})
@@ -80,8 +79,6 @@
 (doseq [n (range n-messages)]
   (swap! in-datasource conj {:n n}))
 
-(swap! in-datasource conj :done)
-
 (def v-peers (onyx.api/start-peers 2 peer-group))
 
 (onyx.api/submit-job
@@ -91,14 +88,12 @@
   :lifecycles lifecycles
   :task-scheduler :onyx.task-scheduler/balanced})
 
-(def results (take-segments! out-chan))
+(def results (take-segments! out-chan 2000))
 
 (deftest testing-output
   (testing "Input is received at output"
     (let [expected (set (map (fn [x] {:n x}) (range n-messages)))]
-    (is (= expected (set (butlast results))))
-    (is (= :done (last results))))))
-
+      (is (= expected (set results))))))
 
 (doseq [v-peer v-peers]
   (onyx.api/shutdown-peer v-peer))
